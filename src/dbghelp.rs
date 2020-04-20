@@ -155,9 +155,9 @@ macro_rules! dbghelp {
         // functions.
         #[allow(dead_code)]
         impl Init {
-            $(pub fn $name(&self) -> $name {
+            $(pub fn $name(&self) -> Option<$name> {
                 unsafe {
-                    DBGHELP.$name().unwrap()
+                    DBGHELP.$name()
                 }
             })*
 
@@ -177,6 +177,11 @@ dbghelp! {
     extern "system" {
         fn SymGetOptions() -> DWORD;
         fn SymSetOptions(options: DWORD) -> ();
+        fn SymInitialize(
+            handle: HANDLE,
+            path: PCSTR,
+            invade: BOOL
+        ) -> BOOL;
         fn SymInitializeW(
             handle: HANDLE,
             path: PCWSTR,
@@ -202,11 +207,23 @@ dbghelp! {
             hProcess: HANDLE,
             AddrBase: DWORD64
         ) -> DWORD64;
+        fn SymFromAddr(
+            hProcess: HANDLE,
+            Address: DWORD64,
+            Displacement: PDWORD64,
+            Symbol: PSYMBOL_INFO
+        ) -> BOOL;
         fn SymFromAddrW(
             hProcess: HANDLE,
             Address: DWORD64,
             Displacement: PDWORD64,
             Symbol: PSYMBOL_INFOW
+        ) -> BOOL;
+        fn SymGetLineFromAddr64(
+            hProcess: HANDLE,
+            dwAddr: DWORD64,
+            pdwDisplacement: PDWORD,
+            Line: PIMAGEHLP_LINE64
         ) -> BOOL;
         fn SymGetLineFromAddrW64(
             hProcess: HANDLE,
@@ -353,7 +370,11 @@ pub fn init() -> Result<Init, ()> {
         // the time, but now that it's using this crate it means that someone will
         // get to initialization first and the other will pick up that
         // initialization.
-        DBGHELP.SymInitializeW().unwrap()(GetCurrentProcess(), ptr::null_mut(), TRUE);
+        if let Some(SymInitializeW) = DBGHELP.SymInitializeW() {
+            SymInitializeW(GetCurrentProcess(), ptr::null_mut(), TRUE);
+        } else {
+            DBGHELP.SymInitialize().unwrap()(GetCurrentProcess(), ptr::null_mut(), TRUE);
+        }
         INITIALIZED = true;
         Ok(ret)
     }

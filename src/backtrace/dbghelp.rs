@@ -136,8 +136,8 @@ pub unsafe fn trace(cb: &mut dyn FnMut(&super::Frame) -> bool) {
                 base
             }
         } else {
-            let function_table_access = dbghelp.SymFunctionTableAccess64();
-            let get_module_base = dbghelp.SymGetModuleBase64();
+            let function_table_access = dbghelp.SymFunctionTableAccess64().unwrap();
+            let get_module_base = dbghelp.SymGetModuleBase64().unwrap();
         }
     }
 
@@ -192,7 +192,7 @@ pub unsafe fn trace(cb: &mut dyn FnMut(&super::Frame) -> bool) {
                 _ => unreachable!(),
             };
 
-            while dbghelp.StackWalk64()(
+            while dbghelp.StackWalk64().unwrap()(
                 image as DWORD,
                 process,
                 thread,

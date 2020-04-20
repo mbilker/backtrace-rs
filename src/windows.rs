@@ -235,6 +235,14 @@ ffi! {
     pub type LPSTACKFRAME_EX = *mut STACKFRAME_EX;
 
     #[repr(C)]
+    pub struct IMAGEHLP_LINE64 {
+        pub SizeOfStruct: DWORD,
+        pub Key: PVOID,
+        pub LineNumber: DWORD,
+        pub FileName: PCHAR,
+        pub Address: DWORD64,
+    }
+    #[repr(C)]
     pub struct IMAGEHLP_LINEW64 {
         pub SizeOfStruct: DWORD,
         pub Key: PVOID,
@@ -243,8 +251,27 @@ ffi! {
         pub Address: DWORD64,
     }
 
+    pub type PIMAGEHLP_LINE64 = *mut IMAGEHLP_LINE64;
     pub type PIMAGEHLP_LINEW64 = *mut IMAGEHLP_LINEW64;
 
+    #[repr(C)]
+    pub struct SYMBOL_INFO {
+        pub SizeOfStruct: ULONG,
+        pub TypeIndex: ULONG,
+        pub Reserved: [ULONG64; 2],
+        pub Index: ULONG,
+        pub Size: ULONG,
+        pub ModBase: ULONG64,
+        pub Flags: ULONG,
+        pub Value: ULONG64,
+        pub Address: ULONG64,
+        pub Register: ULONG,
+        pub Scope: ULONG,
+        pub Tag: ULONG,
+        pub NameLen: ULONG,
+        pub MaxNameLen: ULONG,
+        pub Name: [CHAR; 1],
+    }
     #[repr(C)]
     pub struct SYMBOL_INFOW {
         pub SizeOfStruct: ULONG,
@@ -264,6 +291,7 @@ ffi! {
         pub Name: [WCHAR; 1],
     }
 
+    pub type PSYMBOL_INFO = *mut SYMBOL_INFO;
     pub type PSYMBOL_INFOW = *mut SYMBOL_INFOW;
 
     pub type PTRANSLATE_ADDRESS_ROUTINE64 = Option<
@@ -354,6 +382,7 @@ ffi! {
     pub type PDWORD64 = *mut u64;
     pub type HANDLE = *mut c_void;
     pub type PVOID = HANDLE;
+    pub type PCSTR = *const i8;
     pub type PCWSTR = *const u16;
     pub type LPSTR = *mut i8;
     pub type LPCSTR = *const i8;
@@ -361,7 +390,9 @@ ffi! {
     pub type WORD = u16;
     pub type ULONG = u32;
     pub type ULONG64 = u64;
+    pub type CHAR = i8;
     pub type WCHAR = u16;
+    pub type PCHAR = *mut i8;
     pub type PCONTEXT = *mut CONTEXT;
     pub type LPDWORD = *mut DWORD;
     pub type DWORDLONG = u64;

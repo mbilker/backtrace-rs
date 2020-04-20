@@ -102,9 +102,9 @@ unsafe fn resolve_with_inline(
     frame: &STACKFRAME_EX,
     cb: &mut dyn FnMut(&super::Symbol),
 ) {
-    do_resolve(
+    do_resolve_w(
         |info| {
-            dbghelp.SymFromInlineContextW()(
+            dbghelp.SymFromInlineContextW().unwrap()(
                 GetCurrentProcess(),
                 super::adjust_ip(frame.AddrPC.Offset as *mut _) as u64,
                 frame.InlineFrameContext,
@@ -113,7 +113,7 @@ unsafe fn resolve_with_inline(
             )
         },
         |line| {
-            dbghelp.SymGetLineFromInlineContextW()(
+            dbghelp.SymGetLineFromInlineContextW().unwrap()(
                 GetCurrentProcess(),
                 super::adjust_ip(frame.AddrPC.Offset as *mut _) as u64,
                 frame.InlineFrameContext,
@@ -131,14 +131,100 @@ unsafe fn resolve_without_inline(
     addr: *mut c_void,
     cb: &mut dyn FnMut(&super::Symbol),
 ) {
-    do_resolve(
-        |info| dbghelp.SymFromAddrW()(GetCurrentProcess(), addr as DWORD64, &mut 0, info),
-        |line| dbghelp.SymGetLineFromAddrW64()(GetCurrentProcess(), addr as DWORD64, &mut 0, line),
-        cb,
-    )
+    if dbghelp.SymFromAddrW().is_some() {
+        do_resolve_w(
+            |info| {
+                dbghelp.SymFromAddrW().unwrap()(GetCurrentProcess(), addr as DWORD64, &mut 0, info)
+            },
+            |line| {
+                dbghelp.SymGetLineFromAddrW64().unwrap()(
+                    GetCurrentProcess(),
+                    addr as DWORD64,
+                    &mut 0,
+                    line,
+                )
+            },
+            cb,
+        )
+    } else {
+        do_resolve_a(
+            |info| {
+                dbghelp.SymFromAddr().unwrap()(GetCurrentProcess(), addr as DWORD64, &mut 0, info)
+            },
+            |line| {
+                dbghelp.SymGetLineFromAddr64().unwrap()(
+                    GetCurrentProcess(),
+                    addr as DWORD64,
+                    &mut 0,
+                    line,
+                )
+            },
+            cb,
+        )
+    }
 }
 
-unsafe fn do_resolve(
+unsafe fn do_resolve_a(
+    sym_from_addr: impl FnOnce(*mut SYMBOL_INFO) -> BOOL,
+    get_line_from_addr: impl FnOnce(&mut IMAGEHLP_LINE64) -> BOOL,
+    cb: &mut FnMut(&super::Symbol),
+) {
+    const SIZE: usize = MAX_SYM_NAME + mem::size_of::<SYMBOL_INFO>();
+    let mut data = Aligned8([0u8; SIZE]);
+    let data = &mut data.0;
+    let info = &mut *(data.as_mut_ptr() as *mut SYMBOL_INFO);
+    info.MaxNameLen = MAX_SYM_NAME as ULONG;
+    // the struct size in C.  the value is different to
+    // `size_of::<SYMBOL_INFO>() - MAX_SYM_NAME + 1` (== 81)
+    // due to struct alignment.
+    info.SizeOfStruct = 88;
+
+    if sym_from_addr(info) != TRUE {
+        return;
+    }
+
+    // If the symbol name is greater than MaxNameLen, SymFromAddr will
+    // give a buffer of (MaxNameLen - 1) characters and set NameLen to
+    // the real value.
+    let name_len = ::core::cmp::min(info.NameLen as usize, info.MaxNameLen as usize - 1);
+    let name_ptr = info.Name.as_ptr() as *const u8;
+    let name = slice::from_raw_parts(name_ptr, name_len);
+
+    let mut line = mem::zeroed::<IMAGEHLP_LINE64>();
+    line.SizeOfStruct = mem::size_of::<IMAGEHLP_LINE64>() as DWORD;
+
+    let filename = None;
+    let mut lineno = None;
+    if get_line_from_addr(&mut line) == TRUE {
+        lineno = Some(line.LineNumber as u32);
+
+        // FIXME: Convert multi-byte string to wide-char
+        /*
+        let base = line.FileName;
+        let mut len = 0;
+        while *base.offset(len) != 0 {
+            len += 1;
+        }
+
+        let len = len as usize;
+
+        filename = Some(slice::from_raw_parts(base, len) as *const [u8]);
+        */
+    }
+
+    cb(&super::Symbol {
+        inner: Symbol {
+            name,
+            addr: info.Address as *mut _,
+            line: lineno,
+            filename,
+            _filename_cache: cache(filename),
+            _marker: marker::PhantomData,
+        },
+    })
+}
+
+unsafe fn do_resolve_w(
     sym_from_addr: impl FnOnce(*mut SYMBOL_INFOW) -> BOOL,
     get_line_from_addr: impl FnOnce(&mut IMAGEHLP_LINEW64) -> BOOL,
     cb: &mut dyn FnMut(&super::Symbol),
